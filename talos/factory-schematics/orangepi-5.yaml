@@ -1,0 +1,7 @@
+# Talos Image Factory schematic for Orange Pi 5 / 5 Pro (Rockchip RK3588S)
+# Used with https://factory.talos.dev
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/sbc-rockchip
+      - siderolabs/util-linux-tools
