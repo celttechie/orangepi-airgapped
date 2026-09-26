@@ -1,4 +1,4 @@
-.PHONY: help fetch-assets flash-sd setup-net handoff status clean
+.PHONY: help fetch-assets select-sd detect-sd flash-sd setup-net handoff status clean
 
 # Default shell
 SHELL := /bin/bash
@@ -20,7 +20,13 @@ fetch-assets: ## Download Armbian Desktop image, K3s ARM64 binaries & airgap ima
 	@chmod +x scripts/*.sh
 	@scripts/01-fetch-assets.sh
 
-flash-sd: ## Flash Armbian Desktop image and stage platform assets to SD/NVMe (Usage: make flash-sd DISK=/dev/sdX)
+select-sd: ## Interactively identify, confirm, and save target SD/NVMe storage device to env
+	@chmod +x scripts/*.sh
+	@scripts/detect-sd-device.sh
+
+detect-sd: select-sd ## Alias for select-sd
+
+flash-sd: ## Flash Armbian and stage platform assets to SD/NVMe (Uses SD_DISK from env or DISK=/dev/sdX)
 	@chmod +x scripts/*.sh
 	@scripts/02-flash-and-stage-sd.sh $(DISK)
 

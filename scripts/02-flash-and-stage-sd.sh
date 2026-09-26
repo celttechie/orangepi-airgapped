@@ -19,15 +19,24 @@ elif [[ -f "${ROOT_DIR}/env.example" ]]; then
     source "${ROOT_DIR}/env.example"
 fi
 
-SD_DEVICE="${1:-}"
+SD_DEVICE="${1:-${SD_DISK:-}}"
+
+# If no device specified or in env, launch interactive detection
+if [[ -z "${SD_DEVICE}" ]]; then
+    echo "No target storage device specified via DISK= or SD_DISK in env."
+    echo "Launching interactive device detection..."
+    echo ""
+    "${SCRIPT_DIR}/detect-sd-device.sh"
+    # Reload env to obtain newly saved SD_DISK
+    if [[ -f "${ROOT_DIR}/env" ]]; then
+        # shellcheck disable=SC1091
+        source "${ROOT_DIR}/env"
+    fi
+    SD_DEVICE="${SD_DISK:-}"
+fi
 
 if [[ -z "${SD_DEVICE}" ]]; then
-    echo "Usage: $0 /dev/sdX (or /dev/mmcblkX)"
-    echo ""
-    echo "Available block devices:"
-    lsblk -p -o NAME,SIZE,TYPE,TRAN,MODEL,MOUNTPOINTS
-    echo ""
-    echo "Please specify the target SD card device (e.g., $0 /dev/sda)"
+    echo "Error: No storage device selected."
     exit 1
 fi
 
@@ -35,6 +44,11 @@ if [[ ! -b "${SD_DEVICE}" ]]; then
     echo "Error: Device '${SD_DEVICE}' is not a valid block device."
     exit 1
 fi
+
+# Fetch device details
+DEV_SIZE=$(lsblk -d -n -o SIZE "${SD_DEVICE}" 2>/dev/null || echo "Unknown")
+DEV_MODEL=$(lsblk -d -n -o MODEL "${SD_DEVICE}" 2>/dev/null || echo "Unknown")
+DEV_TRAN=$(lsblk -d -n -o TRAN "${SD_DEVICE}" 2>/dev/null || echo "Unknown")
 
 # Locate Armbian OS Image
 OS_IMAGE=$(find "${DOWNLOADS_DIR}" -maxdepth 1 \( -name "Armbian*.img*" -o -name "armbian*.img*" -o -name "*orangepi*.img*" \) ! -name "*.torrent" | head -n 1)
@@ -51,11 +65,15 @@ if [[ -z "${OS_IMAGE}" || ! -f "${OS_IMAGE}" ]]; then
 fi
 
 echo "======================================================================"
-echo "WARNING: This will completely overwrite all data on ${SD_DEVICE}!"
-echo "Image:  ${OS_IMAGE}"
-echo "Target: ${SD_DEVICE}"
+echo "Target Storage Device:  ${SD_DEVICE}"
+echo "Device Capacity:        ${DEV_SIZE}"
+echo "Device Model:           ${DEV_MODEL}"
+echo "Transport / Bus:        ${DEV_TRAN}"
+echo "Source OS Image:        ${OS_IMAGE}"
 echo "======================================================================"
-read -p "Type 'yes' to proceed: " -r CONFIRM
+echo "WARNING: This will completely overwrite all data on ${SD_DEVICE}!"
+echo "======================================================================"
+read -p "Type 'yes' to proceed with flashing: " -r CONFIRM
 
 if [[ "${CONFIRM}" != "yes" ]]; then
     echo "Aborted."

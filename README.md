@@ -62,35 +62,37 @@ All assets are verified and cached in `downloads/`.
 ### 3. Flash Storage & Pre-Stage Platform Binaries
 Insert your MicroSD card or NVMe USB enclosure into your workstation.
 
-#### Determine the Storage Device Path
-Identify the target block device assigned by your OS:
-1. List block devices:
-   ```bash
-   lsblk -p -o NAME,SIZE,TYPE,TRAN,MODEL,MOUNTPOINTS
-   ```
-2. Or check kernel messages right after plugging in the card:
-   ```bash
-   dmesg | tail -n 20
-   ```
-* **USB Card Readers / Enclosures**: Usually `/dev/sda`, `/dev/sdb`, etc.
-* **Built-in Laptop SD Slots**: Usually `/dev/mmcblk0`.
+#### Identify and Confirm the Storage Device
+Use the interactive selection tool to scan, confirm, and save your SD card's device path:
+```bash
+make select-sd
+```
+This utility:
+1. Lists all physical disks, highlighting removable USB drives and SD card readers.
+2. Prompts you to pick the device number or specify a path.
+3. Shows the **explicit verification details** (device path, capacity, model, bus type, and current partition layout).
+4. Confirms the choice and saves `SD_DISK="/dev/..."` into `env` so future commands default to it automatically.
 
 > [!CAUTION]
-> Always specify the **full disk device** (e.g. `/dev/sda` or `/dev/mmcblk0`), **never** an individual partition (e.g. `/dev/sda1`). Confirm you do not select your workstation's internal drive.
+> Always target the **full disk device** (e.g. `/dev/sda` or `/dev/mmcblk0`), **never** an individual partition (e.g. `/dev/sda1`). Always verify capacity and model before confirming.
 
 #### Flash and Stage in One Command
-Run `make flash-sd` specifying your target drive:
+Once selected, simply run:
 ```bash
-make flash-sd DISK=/dev/sda
+make flash-sd
 ```
-This automated target:
-1. Flashes the Armbian Desktop image to the card.
-2. Mounts the card's root partition.
-3. Pre-stages `k3s`, `kubectl`, `helm`, `zarf`, `uds`, and `k9s` into `/usr/local/bin/`.
-4. Copies K3s air-gapped container images into `/var/lib/rancher/k3s/agent/images/`.
-5. Installs the auto-initialization service (`firstboot-k3s-init.service`).
-6. Installs Desktop shortcuts for the Web Browser, UDS Terminal, and K9s Cluster Manager.
-7. Unmounts and syncs cleanly.
+*(You can also override the target explicitly at any time with `make flash-sd DISK=/dev/sda`).*
+
+This automated process:
+1. Displays the confirmed target disk, capacity, and source OS image.
+2. Prompts for a final explicit `yes` confirmation before writing.
+3. Flashes the Armbian Desktop image directly to the storage media.
+4. Mounts the card's root partition on your workstation.
+5. Pre-stages `k3s`, `kubectl`, `helm`, `zarf`, `uds`, and `k9s` into `/usr/local/bin/`.
+6. Copies K3s air-gapped container images into `/var/lib/rancher/k3s/agent/images/`.
+7. Installs the auto-initialization service (`firstboot-k3s-init.service`).
+8. Installs Desktop shortcuts for the Web Browser, UDS Terminal, and K9s Cluster Manager.
+9. Unmounts and syncs cleanly.
 
 ---
 
@@ -130,7 +132,8 @@ On the Orange Pi's desktop:
 | :--- | :--- |
 | `make help` | Show all available make targets |
 | `make fetch-assets` | Download Armbian Desktop OS, K3s, and CLI binaries to `downloads/` |
-| `make flash-sd DISK=/dev/sdX` | Flash OS and pre-stage offline platform assets to SD/NVMe |
+| `make select-sd` | Interactively detect, verify, and save target SD/NVMe device to `env` |
+| `make flash-sd` | Flash OS and pre-stage offline platform assets to SD/NVMe (uses saved default or `DISK=/dev/sdX`) |
 | `make setup-net IFACE=eth0` | [Optional] Configure laptop interface for tethered direct Ethernet |
 | `make handoff` | [Optional] Configure `uds-platform-prep` for remote tethered deployment |
 | `make status` | Check cluster status via `kubectl` |
