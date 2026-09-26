@@ -45,22 +45,32 @@ done
 
 # 3. Offline Installation of K3s
 echo "[3/6] Installing K3s from pre-staged offline binaries..."
+mkdir -p /etc/rancher/k3s
+
+cat << 'EOF' > /etc/rancher/k3s/config.yaml
+write-kubeconfig-mode: "0644"
+disable:
+  - traefik
+  - servicelb
+  - local-storage
+EOF
+
 export INSTALL_K3S_SKIP_DOWNLOAD=true
+export INSTALL_K3S_SKIP_START=true
 export INSTALL_K3S_BIN_DIR="/usr/local/bin"
-export INSTALL_K3S_EXEC="server --write-kubeconfig-mode 644 --disable traefik --disable servicelb --disable local-storage"
+export INSTALL_K3S_EXEC="server"
 
 if [[ -f "/usr/local/bin/k3s-install.sh" ]]; then
     chmod +x /usr/local/bin/k3s /usr/local/bin/k3s-install.sh
     /usr/local/bin/k3s-install.sh
-elif [[ -f "/usr/local/bin/k3s" ]]; then
-    # Fallback manual systemd unit if install.sh is not used
-    chmod +x /usr/local/bin/k3s
+else
+    chmod +x /usr/local/bin/k3s 2>/dev/null || true
     cat << 'EOF' > /etc/systemd/system/k3s.service
 [Unit]
 Description=Lightweight Kubernetes
 Documentation=https://k3s.io
-Wants=network-online.target
-After=network-online.target
+Wants=network.target
+After=network.target
 
 [Service]
 Type=notify
@@ -78,14 +88,18 @@ Restart=always
 RestartSec=5s
 ExecStartPre=-/sbin/modprobe br_netfilter
 ExecStartPre=-/sbin/modprobe overlay
-ExecStart=/usr/local/bin/k3s server --write-kubeconfig-mode 644 --disable traefik --disable servicelb --disable local-storage
+ExecStart=/usr/local/bin/k3s server
 
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload
-    systemctl enable --now k3s.service
 fi
+
+systemctl daemon-reload
+systemctl enable --now k3s.service || {
+    echo "[WARNING] Initial systemctl start returned error, checking status..."
+    systemctl status k3s.service --no-pager || true
+}
 
 # 4. Wait for Kubernetes API & Kubeconfig to become ready
 echo "[4/6] Waiting for K3s API server and kubeconfig..."
