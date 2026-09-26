@@ -1,108 +1,126 @@
 # Orange Pi Air-Gapped Provisioner (`orangepi-airgapped`)
 
-Automated, reproducible bare-metal provisioning toolchain to boot, install, and configure **Talos Linux (Kubernetes)** on **Orange Pi (5, 5 Pro, 3 LTS)** single-board computers, preparing them for standalone air-gapped **Defense Unicorns UDS (Unified Delivery System)** and **Zarf** deployments.
+Automated, reproducible bare-metal provisioning toolchain to prepare **Orange Pi (5 Pro, 5, 3 LTS)** single-board computers as standalone, air-gapped **Defense Unicorns UDS (Unified Delivery System)** appliances.
 
-This toolkit supports **two provisioning methods**:
-1. **Direct Storage Flash (Recommended for Quick Air-Gapped Setup)**: Flash Talos directly to MicroSD or NVMe from your laptop. Insert into the Orange Pi and boot directly without needing any laptop netboot services.
-2. **True Network / PXE Boot (For Testing Diskless Netboot)**: Boot the Orange Pi over the network via onboard SPI NOR Flash (or netboot stage-1 loader) using the laptop's local DHCP, TFTP, and HTTP boot services.
+This toolkit configures an **Armbian Desktop (Ubuntu / Debian ARM64)** base OS with native Rockchip GPU/HDMI drivers, a pre-staged **K3s Kubernetes** cluster, offline CLI tools (`uds`, `zarf`, `kubectl`, `helm`, `k9s`), and desktop shortcuts for immediate on-device interaction via an HDMI monitor, keyboard, and mouse.
+
+> [!NOTE]
+> See [ADR 0001: Migrate Base OS from Talos Linux to Armbian Desktop](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0001-migrate-base-os-from-talos-to-armbian.md) for the architecture rationale and technical background.
 
 ---
 
-## Architecture & Provisioning Options
+## Standalone Air-Gapped Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ LAPTOP (Direct Ethernet: 192.168.42.1/24 or Standalone Card Reader)                    │
+│ WORKSTATION / LAPTOP (Provisioning Only)                                               │
 │                                                                                        │
-│ ┌──────────────────────────────────────┐     ┌──────────────────────────────────────┐  │
-│ │ OPTION 1: DIRECT STORAGE FLASH       │     │ OPTION 2: PXE / NETWORK BOOT         │  │
-│ │ • Flash raw Talos image to SD/NVMe   │     │ • Laptop runs DHCP, TFTP & HTTP      │  │
-│ │ • Pre-load machine config            │     │ • Serves Talos kernel & initramfs    │  │
-│ │ • No laptop boot server required     │     │ • Orange Pi SPI/U-Boot boots over NIC│  │
-│ └──────────────────┬───────────────────┘     └──────────────────┬───────────────────┘  │
-└────────────────────┼────────────────────────────────────────────┼──────────────────────┘
-                     │ Flash SD / NVMe Card                       │ Direct RJ45 Ethernet
-                     ▼                                            ▼
+│ 1. Download Armbian Desktop OS + K3s Airgap Binaries + UDS/Zarf CLIs                   │
+│ 2. Flash Armbian image directly to MicroSD / NVMe storage                              │
+│ 3. Mount rootfs partition and pre-stage offline platform assets into storage           │
+└───────────────────────────────────────────────────┬────────────────────────────────────┘
+                                                    │ Insert Flashed Storage Media
+                                                    ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ ORANGE PI (Orange Pi 5 / 5 Pro / 3 LTS)                                                │
-│ • Runs hardened Talos Linux (Single-Node Kubernetes)                                   │
-│ • Zero OS drift, immutable, API-managed                                                │
-│ • Runs Zarf & UDS Core / platform workloads                                            │
-│ • Unplug cable -> Operates 100% standalone & air-gapped                                │
+│ ORANGE PI 5 PRO / 5 / 3 LTS (100% Standalone & Air-Gapped)                             │
+│                                                                                        │
+│ ┌────────────────────────────────────────────────────────────────────────────────────┐ │
+│ │ HARDWARE PERIPHERALS: HDMI Monitor + USB Keyboard & Mouse                          │ │
+│ ├────────────────────────────────────────────────────────────────────────────────────┤ │
+│ │ ARMBIAN DESKTOP (XFCE / GUI)                                                       │ │
+│ │ • Native Rockchip RK3588 GPU / HDMI Display Output                                 │ │
+│ │ • Web Browser (Chromium) with pre-configured UDS Service Bookmarks                 │ │
+│ │ • UDS Terminal with `kubectl`, `uds`, `zarf`, and `k9s` pre-configured             │ │
+│ ├────────────────────────────────────────────────────────────────────────────────────┤ │
+│ │ SINGLE-NODE KUBERNETES (K3s Engine)                                                │ │
+│ │ • Auto-initializes on first boot from pre-staged airgap image tarballs             │ │
+│ │ • Hosts UDS Core Platform (Istio, Keycloak, NeuVector, Grafana, Prom)              │ │
+│ └────────────────────────────────────────────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Workflow 1: Direct Storage Flash (Zero-Netboot)
+## Step-by-Step Provisioning Workflow
 
-*Best if you are already flashing an SD card or NVMe drive from your laptop and want the simplest, self-contained air-gapped boot.*
+### 1. Configure Target Model (Optional)
+Edit `env` (or copy from `env.example`) to choose your Orange Pi model and tool versions:
+```bash
+cp env.example env
+```
+*Default model is `orangepi5-pro` with Armbian Noble Desktop.*
 
-### 1. Fetch Talos Assets
+### 2. Fetch Offline Platform Assets
+Download the Armbian Desktop OS image, K3s ARM64 binaries and container image tarballs, and CLI toolchains (`uds`, `zarf`, `kubectl`, `helm`, `k9s`):
 ```bash
 make fetch-assets
 ```
-
-### 2. Flash MicroSD or NVMe Drive
-Insert your MicroSD card or NVMe USB enclosure into your laptop:
-```bash
-make flash-sd DISK=/dev/sdb
-```
-*(Replace `/dev/sdb` with your card's device path).*
-
-### 3. Connect & Power On
-1. Insert the card into your Orange Pi.
-2. Connect an Ethernet cable between your laptop and Orange Pi (or plug into your local switch).
-3. Power on the Orange Pi.
-
-### 4. Configure & Bootstrap Kubernetes
-Configure the static link and generate/apply the Talos machine configuration:
-```bash
-make setup-net IFACE=eth0
-make bootstrap
-```
-
-### 5. Handoff to `uds-platform-prep`
-```bash
-make handoff
-```
+All assets are verified and cached in `downloads/`.
 
 ---
 
-## Workflow 2: True Network / PXE Boot
+### 3. Flash Storage & Pre-Stage Platform Binaries
+Insert your MicroSD card or NVMe USB enclosure into your workstation.
 
-*Best for testing diskless network booting or wiping/reprovisioning nodes over the wire without swapping SD cards.*
+#### Determine the Storage Device Path
+Identify the target block device assigned by your OS:
+1. List block devices:
+   ```bash
+   lsblk -p -o NAME,SIZE,TYPE,TRAN,MODEL,MOUNTPOINTS
+   ```
+2. Or check kernel messages right after plugging in the card:
+   ```bash
+   dmesg | tail -n 20
+   ```
+* **USB Card Readers / Enclosures**: Usually `/dev/sda`, `/dev/sdb`, etc.
+* **Built-in Laptop SD Slots**: Usually `/dev/mmcblk0`.
 
-### How PXE Works on Orange Pi
-Unlike x86 motherboards, ARM SoC ROMs do not have Ethernet drivers baked into silicon. True diskless PXE is achieved on **Orange Pi 5 / 5 Pro / 5 Plus** by flashing U-Boot / UEFI to the board's onboard **SPI NOR Flash** once. From then on, the board boots from SPI flash, initializes the NIC, requests DHCP, and loads Talos over TFTP/HTTP without needing an SD card.
+> [!CAUTION]
+> Always specify the **full disk device** (e.g. `/dev/sda` or `/dev/mmcblk0`), **never** an individual partition (e.g. `/dev/sda1`). Confirm you do not select your workstation's internal drive.
 
-### 1. Configure Laptop Network Port
+#### Flash and Stage in One Command
+Run `make flash-sd` specifying your target drive:
 ```bash
-make setup-net IFACE=eth0
+make flash-sd DISK=/dev/sda
 ```
+This automated target:
+1. Flashes the Armbian Desktop image to the card.
+2. Mounts the card's root partition.
+3. Pre-stages `k3s`, `kubectl`, `helm`, `zarf`, `uds`, and `k9s` into `/usr/local/bin/`.
+4. Copies K3s air-gapped container images into `/var/lib/rancher/k3s/agent/images/`.
+5. Installs the auto-initialization service (`firstboot-k3s-init.service`).
+6. Installs Desktop shortcuts for the Web Browser, UDS Terminal, and K9s Cluster Manager.
+7. Unmounts and syncs cleanly.
 
-### 2. Fetch Assets & Start Boot Server
-```bash
-make fetch-assets
-make start-pxe
-```
-This starts Docker containers for **Dnsmasq** (DHCP + TFTP serving `ipxe-arm64.efi`) and **Nginx** (HTTP serving `vmlinuz-arm64`, `initramfs-arm64.xz`, and `machineconfig.yaml`).
+---
 
-### 3. Boot Orange Pi Over Network
-* Connect the Orange Pi to the laptop Ethernet port.
-* Power on the Orange Pi (with SPI Flash bootloader enabled).
-* The board receives IP `192.168.42.100`, downloads the Talos kernel via HTTP, and boots Talos in RAM.
+### 4. Boot Orange Pi as Standalone Air-Gapped Appliance
 
-### 4. Bootstrap Kubernetes
-```bash
-make bootstrap
-make handoff
-```
+1. **Eject & Insert**: Insert the flashed MicroSD card into your Orange Pi.
+2. **Connect Peripherals**: Connect your HDMI monitor, USB keyboard, and mouse.
+3. **Power On**: Power on the Orange Pi.
+4. **Boot Sequence**:
+   - The board boots directly into the **Armbian Desktop** on your HDMI monitor.
+   - On first boot, the systemd initialization service automatically configures K3s from the offline binaries and container images.
+   - Kubeconfig is populated at `/etc/rancher/k3s/k3s.yaml` and `~/.kube/config`.
 
-### 5. Stop Boot Server
-```bash
-make stop-pxe
-```
+---
+
+### 5. Deploy UDS Platform Workloads
+
+On the Orange Pi's desktop:
+
+1. **Open Terminal**: Double-click **UDS Terminal** or open a terminal window.
+2. **Verify Cluster Readiness**:
+   ```bash
+   kubectl get nodes
+   ```
+   *Or launch `k9s` to monitor the cluster in real-time.*
+3. **Deploy UDS Bundles**:
+   ```bash
+   uds deploy <bundle-name>.tar.zst
+   ```
+4. **Open Web Browser**: Launch the **UDS Core Web Portal** shortcut to access Keycloak, NeuVector, Grafana, and Istio applications locally.
 
 ---
 
@@ -110,21 +128,16 @@ make stop-pxe
 
 | Command | Description |
 | :--- | :--- |
-| `make help` | Show all available targets |
-| `make fetch-assets` | Download Talos ARM64 kernel, initramfs, and raw images |
-| `make flash-sd DISK=/dev/sdX` | Flash Talos image directly to MicroSD/NVMe |
-| `make setup-net IFACE=eth0` | Assign static `192.168.42.1/24` to laptop Ethernet port |
-| `make start-pxe` | Start DHCP, TFTP, and HTTP netboot servers |
-| `make stop-pxe` | Stop netboot servers |
-| `make bootstrap` | Generate machine configs, apply to Orange Pi, retrieve `kubeconfig` |
-| `make handoff` | Export kubeconfig and configure `uds-platform-prep` |
-| `make status` | Verify Kubernetes node and cluster health |
-| `make clean` | Remove generated cluster secrets and configs |
+| `make help` | Show all available make targets |
+| `make fetch-assets` | Download Armbian Desktop OS, K3s, and CLI binaries to `downloads/` |
+| `make flash-sd DISK=/dev/sdX` | Flash OS and pre-stage offline platform assets to SD/NVMe |
+| `make setup-net IFACE=eth0` | [Optional] Configure laptop interface for tethered direct Ethernet |
+| `make handoff` | [Optional] Configure `uds-platform-prep` for remote tethered deployment |
+| `make status` | Check cluster status via `kubectl` |
+| `make clean` | Remove temporary staging directories |
 
 ---
 
-## Hardware Notes
+## Architecture Decision Records (ADRs)
 
-* **Automatic MDI/MDI-X**: Standard RJ45 Ethernet patch cables work for direct laptop-to-board connections; no crossover cable is needed.
-* **Orange Pi 5 / 5 Pro (8GB - 32GB)**: Recommended target for full UDS Core platform suites (Istio, Keycloak, Prometheus, Grafana, NeuVector).
-* **Orange Pi 3 LTS (2GB)**: Suitable for lightweight edge workloads.
+* [ADR 0001: Migrate Base OS from Talos Linux to Armbian Desktop](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0001-migrate-base-os-from-talos-to-armbian.md)

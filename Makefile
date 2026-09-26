@@ -1,4 +1,4 @@
-.PHONY: help setup-net fetch-assets flash-sd start-server stop-server start-pxe stop-pxe bootstrap handoff status clean spi-info
+.PHONY: help fetch-assets flash-sd setup-net handoff status clean
 
 # Default shell
 SHELL := /bin/bash
@@ -11,57 +11,29 @@ endif
 
 help: ## Show this help message
 	@echo "Orange Pi Air-Gapped Provisioner (orangepi-airgapped)"
-	@echo "======================================================"
-	@echo "Workflow 1: Direct Storage Flash (SD / NVMe)"
-	@echo "Workflow 2: True Network / PXE Boot (SPI Flash Netboot)"
-	@echo "======================================================"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo "======================================================================"
+	@echo "Standalone Air-Gapped Armbian Desktop + K3s + UDS Toolchain"
+	@echo "======================================================================"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-setup-net: ## Configure laptop Ethernet interface with static IP (e.g. make setup-net IFACE=eth0)
+fetch-assets: ## Download Armbian Desktop image, K3s ARM64 binaries & airgap images, and CLI tools
+	@chmod +x scripts/*.sh
+	@scripts/01-fetch-assets.sh
+
+flash-sd: ## Flash Armbian Desktop image and stage platform assets to SD/NVMe (Usage: make flash-sd DISK=/dev/sdX)
+	@chmod +x scripts/*.sh
+	@scripts/02-flash-and-stage-sd.sh $(DISK)
+
+setup-net: ## [Optional] Configure laptop Ethernet interface for direct connection (e.g. make setup-net IFACE=eth0)
 	@chmod +x scripts/*.sh
 	@scripts/01-setup-laptop-net.sh $(IFACE)
 
-fetch-assets: ## Download Talos ARM64 kernel, initramfs, and raw images
+handoff: ## Configure uds-platform-prep directory for ARM64 deployment
 	@chmod +x scripts/*.sh
-	@scripts/02-fetch-talos-assets.sh
+	@scripts/03-handoff-uds.sh
 
-flash-sd: ## [Option 1] Flash Talos image to MicroSD card (Usage: make flash-sd DISK=/dev/sdX)
-	@chmod +x scripts/*.sh
-	@scripts/03-create-sd-bootstrap.sh $(DISK)
+status: ## Verify cluster state via local kubeconfig if tethered or remote
+	@export KUBECONFIG=$${KUBECONFIG:-./kubeconfig}; kubectl get nodes -o wide || echo "Cluster not responding or kubeconfig missing. Ensure Orange Pi is booted."
 
-start-pxe: ## [Option 2] Start local DHCP/TFTP/HTTP netboot docker containers
-	@docker compose up -d
-	@echo "PXE / Netboot server running on laptop."
-
-stop-pxe: ## [Option 2] Stop local DHCP/TFTP/HTTP netboot docker containers
-	@docker compose down
-
-start-server: start-pxe ## Alias for start-pxe
-
-stop-server: stop-pxe ## Alias for stop-pxe
-
-spi-info: ## [Option 2] Show instructions for one-time SPI NOR Flash programming for PXE
-	@echo "======================================================================"
-	@echo "Orange Pi 5 / 5 Pro SPI NOR Flash Netboot Setup"
-	@echo "======================================================================"
-	@echo "To enable true diskless PXE booting on Orange Pi 5:"
-	@echo "1. Boot standard Armbian/Orange Pi OS from an SD card once."
-	@echo "2. Run: sudo orangepi-config -> System -> Install -> Install to SPI."
-	@echo "   (or: sudo dd if=/usr/lib/linux-u-boot-.../u-boot-rockchip-spi.bin of=/dev/mtdblock0)"
-	@echo "3. Power off, remove SD card."
-	@echo "4. The board will now boot U-Boot from SPI and PXE boot over Ethernet."
-	@echo "======================================================================"
-
-bootstrap: ## Apply Talos machine config to Orange Pi and retrieve kubeconfig
-	@chmod +x scripts/*.sh
-	@scripts/04-apply-talos-config.sh
-
-handoff: ## Link kubeconfig and configure uds-platform-prep for ARM64
-	@chmod +x scripts/*.sh
-	@scripts/05-handoff-uds.sh
-
-status: ## Check connection and Kubernetes cluster state
-	@export KUBECONFIG=./kubeconfig; kubectl get nodes -o wide || echo "Cluster not yet responding or kubeconfig missing."
-
-clean: ## Remove generated secrets, boot assets cache, and configurations
-	@rm -rf _out kubeconfig
+clean: ## Clean up temporary staging mounts and build output
+	@rm -rf _out /tmp/orangepi_rootfs.*
