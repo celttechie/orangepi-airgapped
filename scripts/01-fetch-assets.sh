@@ -75,17 +75,17 @@ else
     else
         # Determine image name mapping for common Orange Pi models
         case "${OPI_MODEL}" in
-            orangepi5-pro)
-                ARMBIAN_URL="https://github.com/armbian/community/releases/download/v${ARMBIAN_VERSION}/Armbian_${ARMBIAN_VERSION}_Orangepi5-pro_${ARMBIAN_RELEASE}_vendor_6.1.75_${ARMBIAN_DESKTOP}_desktop.img.xz"
-                FALLBACK_URL="https://dl.armbian.com/orangepi5-pro/archive/Armbian_${ARMBIAN_VERSION}_Orangepi5-pro_${ARMBIAN_RELEASE}_vendor_6.1.75_${ARMBIAN_DESKTOP}_desktop.img.xz"
+            orangepi5-pro|orangepi5pro)
+                ARMBIAN_URL="https://github.com/armbian/community/releases/download/26.11.0-trunk.52/Armbian_community_26.11.0-trunk.52_Orangepi5pro_resolute_vendor_6.1.172_gnome_desktop.img.xz"
+                FALLBACK_URL="https://github.com/armbian/community/releases/download/26.11.0-trunk.52/Armbian_community_26.11.0-trunk.52_Orangepi5pro_resolute_vendor_6.1.172_kde-plasma_desktop.img.xz"
                 ;;
             orangepi5|orangepi-5)
-                ARMBIAN_URL="https://github.com/armbian/community/releases/download/v${ARMBIAN_VERSION}/Armbian_${ARMBIAN_VERSION}_Orangepi5_${ARMBIAN_RELEASE}_vendor_6.1.75_${ARMBIAN_DESKTOP}_desktop.img.xz"
-                FALLBACK_URL="https://dl.armbian.com/orangepi5/archive/Armbian_${ARMBIAN_VERSION}_Orangepi5_${ARMBIAN_RELEASE}_vendor_6.1.75_${ARMBIAN_DESKTOP}_desktop.img.xz"
+                ARMBIAN_URL="https://github.com/armbian/os/releases/download/26.8.0-trunk.420/Armbian_26.8.0-trunk.420_Orangepi5_resolute_vendor_6.1.115_gnome_desktop.img.xz"
+                FALLBACK_URL="https://github.com/armbian/community/releases/download/26.11.0-trunk.52/Armbian_community_26.11.0-trunk.52_Orangepi5-ultra_resolute_vendor_6.1.172_gnome_desktop.img.xz"
                 ;;
             orangepi3-lts|orangepi-3-lts)
-                ARMBIAN_URL="https://github.com/armbian/community/releases/download/v${ARMBIAN_VERSION}/Armbian_${ARMBIAN_VERSION}_Orangepi3-lts_${ARMBIAN_RELEASE}_current_6.6.44_${ARMBIAN_DESKTOP}_desktop.img.xz"
-                FALLBACK_URL="https://dl.armbian.com/orangepi3-lts/archive/Armbian_${ARMBIAN_VERSION}_Orangepi3-lts_${ARMBIAN_RELEASE}_current_6.6.44_${ARMBIAN_DESKTOP}_desktop.img.xz"
+                ARMBIAN_URL="https://github.com/armbian/os/releases/download/26.8.0-trunk.420/Armbian_26.8.0-trunk.420_Orangepi3-lts_resolute_vendor_6.1.115_gnome_desktop.img.xz"
+                FALLBACK_URL="https://dl.armbian.com/orangepi3-lts/archive/Armbian_24.8.1_Orangepi3-lts_noble_vendor_6.1.75_xfce_desktop.img.xz"
                 ;;
             *)
                 echo "  [INFO] Please specify ARMBIAN_IMAGE_URL in env file or place an Armbian .img/.img.xz in downloads/"
@@ -98,7 +98,7 @@ else
             echo "  Attempting download of ${IMG_NAME}..."
             download_file "${ARMBIAN_URL}" "${DOWNLOADS_DIR}/${IMG_NAME}" "Armbian Desktop OS Image" || \
             download_file "${FALLBACK_URL}" "${DOWNLOADS_DIR}/${IMG_NAME}" "Armbian Desktop OS Image (Fallback Mirror)" || {
-                echo "  [NOTE] If download fails due to upstream release tag changes, manually place the downloaded Armbian .img.xz into '${DOWNLOADS_DIR}/'"
+                echo "  [NOTE] If download fails due to upstream release changes, place an Armbian .img.xz directly into '${DOWNLOADS_DIR}/'"
             }
         fi
     fi
@@ -148,7 +148,8 @@ chmod +x "${DOWNLOADS_DIR}/zarf" 2>/dev/null || true
 # 6. UDS CLI ARM64
 echo ""
 echo "[6/7] UDS CLI ARM64 (${UDS_VERSION})..."
-download_file "https://github.com/defenseunicorns/uds-cli/releases/download/${UDS_VERSION}/uds_${UDS_VERSION}_Linux_arm64" "${DOWNLOADS_DIR}/uds" "UDS CLI ARM64"
+download_file "https://github.com/defenseunicorns/uds-cli/releases/download/${UDS_VERSION}/uds-cli_${UDS_VERSION}_Linux_arm64" "${DOWNLOADS_DIR}/uds" "UDS CLI ARM64" || \
+download_file "https://github.com/defenseunicorns/uds-cli/releases/download/${UDS_VERSION}/uds-cli_${UDS_VERSION#v}_Linux_arm64" "${DOWNLOADS_DIR}/uds" "UDS CLI ARM64"
 chmod +x "${DOWNLOADS_DIR}/uds" 2>/dev/null || true
 
 # 7. K9s ARM64
