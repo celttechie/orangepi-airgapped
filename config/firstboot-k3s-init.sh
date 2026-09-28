@@ -13,8 +13,8 @@ echo "[FirstBoot] Starting Air-Gapped K3s & UDS Platform Initialization"
 echo "Date: $(date -u)"
 echo "======================================================================"
 
-# 1. Ensure kernel modules and sysctl settings for Kubernetes
-echo "[1/6] Configuring kernel modules and sysctl..."
+# 1. Ensure kernel modules, sysctl, and fallback route for standalone airgap
+echo "[1/6] Configuring kernel modules, sysctl, and air-gap network routes..."
 modprobe br_netfilter 2>/dev/null || true
 modprobe overlay 2>/dev/null || true
 
@@ -24,6 +24,12 @@ net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward = 1
 EOF
 sysctl --system || true
+
+# Ensure a default route entry exists in /proc/net/route even without DHCP/gateway
+if ! ip route show | grep -q "^default"; then
+    echo "Adding fallback default route on lo for isolated air-gap boot..."
+    ip route add default dev lo metric 1000 2>/dev/null || true
+fi
 
 # 2. Configure environment profiles and aliases for users
 echo "[2/6] Configuring bash profiles and aliases..."
@@ -49,6 +55,8 @@ mkdir -p /etc/rancher/k3s
 
 cat << 'EOF' > /etc/rancher/k3s/config.yaml
 write-kubeconfig-mode: "0644"
+node-ip: "127.0.0.1"
+bind-address: "0.0.0.0"
 disable:
   - traefik
   - servicelb
