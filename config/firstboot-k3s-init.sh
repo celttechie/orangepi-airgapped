@@ -25,15 +25,27 @@ net.ipv4.ip_forward = 1
 EOF
 sysctl --system || true
 
-# Ensure a default route entry exists in /proc/net/route even without DHCP/gateway
-if ! ip route show | grep -q "^default"; then
-    echo "Adding fallback default route on lo for isolated air-gap boot..."
-    ip route add default dev lo metric 1000 2>/dev/null || true
+# Load air-gap appliance configuration if present
+if [[ -f "/etc/default/orangepi-airgap" ]]; then
+    # shellcheck disable=SC1091
+    source "/etc/default/orangepi-airgap"
 fi
 
-# 2. Configure environment profiles and aliases for users
-echo "[2/6] Configuring bash profiles and aliases..."
-for BASHRC_FILE in /root/.bashrc /home/armbian/.bashrc /etc/skel/.bashrc; do
+APPLIANCE_IP="${TARGET_IP:-192.168.42.100}"
+APPLIANCE_HOST="${HOSTNAME:-orangepi5pro}"
+
+# 2. Configure user permissions, environment profiles, and aliases
+echo "[2/6] Configuring user home permissions, bash profiles, and aliases..."
+for USER_HOME in /home/*; do
+    if [[ -d "${USER_HOME}" ]]; then
+        USER_NAME=$(basename "${USER_HOME}")
+        chown -R "${USER_NAME}:${USER_NAME}" "${USER_HOME}" 2>/dev/null || true
+        chmod 700 "${USER_HOME}/.ssh" 2>/dev/null || true
+        chmod 600 "${USER_HOME}/.ssh/authorized_keys" 2>/dev/null || true
+    fi
+done
+
+for BASHRC_FILE in /root/.bashrc /home/*/.bashrc /etc/skel/.bashrc; do
     if [[ -f "${BASHRC_FILE}" ]]; then
         if ! grep -q "KUBECONFIG" "${BASHRC_FILE}"; then
             cat << 'EOF' >> "${BASHRC_FILE}"
@@ -49,18 +61,27 @@ EOF
     fi
 done
 
+# Ensure hostname resolution points to the deterministic appliance IP
+if [[ -f "/etc/hosts" ]]; then
+    if ! grep -q "${APPLIANCE_IP}" "/etc/hosts"; then
+        echo -e "${APPLIANCE_IP}\t${APPLIANCE_HOST}" >> /etc/hosts
+    fi
+fi
+
 # 3. Offline Installation of K3s
 echo "[3/6] Installing K3s from pre-staged offline binaries..."
 mkdir -p /etc/rancher/k3s
 
-cat << 'EOF' > /etc/rancher/k3s/config.yaml
+cat << EOF > /etc/rancher/k3s/config.yaml
 write-kubeconfig-mode: "0644"
-node-ip: "127.0.0.1"
-bind-address: "0.0.0.0"
+node-ip: "${APPLIANCE_IP}"
+advertise-address: "${APPLIANCE_IP}"
+flannel-backend: "host-gw"
 disable:
   - traefik
   - servicelb
   - local-storage
+  - metrics-server
 EOF
 
 export INSTALL_K3S_SKIP_DOWNLOAD=true
@@ -104,42 +125,42 @@ EOF
 fi
 
 systemctl daemon-reload
-systemctl enable --now k3s.service || {
-    echo "[WARNING] Initial systemctl start returned error, checking status..."
-    systemctl status k3s.service --no-pager || true
-}
 
-# 4. Wait for Kubernetes API & Kubeconfig to become ready
-echo "[4/6] Waiting for K3s API server and kubeconfig..."
-MAX_WAIT=60
-WAIT_COUNT=0
-until [[ -f "/etc/rancher/k3s/k3s.yaml" ]] && /usr/local/bin/kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes >/dev/null 2>&1; do
-    if (( WAIT_COUNT >= MAX_WAIT )); then
-        echo "[WARNING] K3s API did not become ready within ${MAX_WAIT}s. Continuing..."
-        break
-    fi
-    sleep 2
-    ((WAIT_COUNT+=2))
-done
+# 4. Initialize Kubeconfig links and permissions
+echo "[4/6] Setting up Kubeconfig paths and permissions..."
 
 # Ensure user permissions on kubeconfig
 chmod 644 /etc/rancher/k3s/k3s.yaml || true
-mkdir -p /root/.kube /home/armbian/.kube 2>/dev/null || true
+mkdir -p /root/.kube /etc/skel/.kube 2>/dev/null || true
 cp /etc/rancher/k3s/k3s.yaml /root/.kube/config 2>/dev/null || true
-cp /etc/rancher/k3s/k3s.yaml /home/armbian/.kube/config 2>/dev/null || true
-chown -R armbian:armbian /home/armbian/.kube 2>/dev/null || true
+cp /etc/rancher/k3s/k3s.yaml /etc/skel/.kube/config 2>/dev/null || true
+
+for USER_HOME in /home/*; do
+    if [[ -d "${USER_HOME}" ]]; then
+        mkdir -p "${USER_HOME}/.kube" 2>/dev/null || true
+        cp /etc/rancher/k3s/k3s.yaml "${USER_HOME}/.kube/config" 2>/dev/null || true
+        USER_NAME=$(basename "${USER_HOME}")
+        chown -R "${USER_NAME}:${USER_NAME}" "${USER_HOME}/.kube" 2>/dev/null || true
+    fi
+done
 
 # 5. Set up Desktop shortcuts on user desktop
 echo "[5/6] Setting up Desktop shortcuts..."
-mkdir -p /home/armbian/Desktop /etc/skel/Desktop 2>/dev/null || true
-
+mkdir -p /etc/skel/Desktop 2>/dev/null || true
 if [[ -d "/usr/local/share/uds/desktop-shortcuts" ]]; then
-    cp /usr/local/share/uds/desktop-shortcuts/*.desktop /home/armbian/Desktop/ 2>/dev/null || true
     cp /usr/local/share/uds/desktop-shortcuts/*.desktop /etc/skel/Desktop/ 2>/dev/null || true
-    chmod +x /home/armbian/Desktop/*.desktop 2>/dev/null || true
     chmod +x /etc/skel/Desktop/*.desktop 2>/dev/null || true
-    chown -R armbian:armbian /home/armbian/Desktop 2>/dev/null || true
 fi
+
+for USER_HOME in /home/*; do
+    if [[ -d "${USER_HOME}" ]] && [[ -d "/usr/local/share/uds/desktop-shortcuts" ]]; then
+        mkdir -p "${USER_HOME}/Desktop" 2>/dev/null || true
+        cp /usr/local/share/uds/desktop-shortcuts/*.desktop "${USER_HOME}/Desktop/" 2>/dev/null || true
+        chmod +x "${USER_HOME}/Desktop/"*.desktop 2>/dev/null || true
+        USER_NAME=$(basename "${USER_HOME}")
+        chown -R "${USER_NAME}:${USER_NAME}" "${USER_HOME}/Desktop" 2>/dev/null || true
+    fi
+done
 
 # 6. Create MOTD Banner
 cat << 'EOF' > /etc/motd

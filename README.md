@@ -1,4 +1,4 @@
-# Orange Pi Air-Gapped Provisioner (`orangepi-airgapped`)
+I# Orange Pi Air-Gapped Provisioner (`orangepi-airgapped`)
 
 Automated, reproducible bare-metal provisioning toolchain to prepare **Orange Pi (5 Pro, 5, 3 LTS)** single-board computers as standalone, air-gapped **Defense Unicorns UDS (Unified Delivery System)** appliances.
 
@@ -96,33 +96,42 @@ This automated process:
 
 ---
 
-### 4. Boot Orange Pi as Standalone Air-Gapped Appliance
+### 4. Boot & Commission Cluster
 
-1. **Eject & Insert**: Insert the flashed MicroSD card into your Orange Pi.
-2. **Connect Peripherals**: Connect your HDMI monitor, USB keyboard, and mouse.
-3. **Power On**: Power on the Orange Pi.
-4. **Boot Sequence**:
-   - The board boots directly into the **Armbian Desktop** on your HDMI monitor.
-   - On first boot, the systemd initialization service automatically configures K3s from the offline binaries and container images.
-   - Kubeconfig is populated at `/etc/rancher/k3s/k3s.yaml` and `~/.kube/config`.
+1. **Insert & Power On**: Insert the flashed MicroSD/NVMe into your Orange Pi. Connect an Ethernet cable between the Orange Pi and your laptop, then power on the board.
+2. **Commission & Bootstrap from Laptop**:
+   Run the automated commissioning command from your laptop:
+   ```bash
+   make bootstrap
+   ```
+   This automated process:
+   - Waits for the Orange Pi to boot and become reachable over SSH at `192.168.42.100`.
+   - Synchronizes the board's system clock to the laptop's exact UTC timestamp (preventing air-gap TLS certificate errors).
+   - Starts and enables the `k3s` service.
+   - Fetches `/etc/rancher/k3s/k3s.yaml` to `./kubeconfig` and `~/.kube/config` on your laptop.
+   - Verifies the cluster reaches `Ready` state.
 
 ---
 
 ### 5. Deploy UDS Platform Workloads
 
-On the Orange Pi's desktop:
+You can deploy workloads either remotely from your laptop or standalone on the Orange Pi:
 
-1. **Open Terminal**: Double-click **UDS Terminal** or open a terminal window.
-2. **Verify Cluster Readiness**:
-   ```bash
-   kubectl get nodes
-   ```
-   *Or launch `k9s` to monitor the cluster in real-time.*
-3. **Deploy UDS Bundles**:
+#### Option A: Deploy from Laptop (Tethered)
+```bash
+make handoff
+# or deploy directly using the local kubeconfig:
+export KUBECONFIG=./kubeconfig
+uds deploy <bundle-name>.tar.zst
+```
+
+#### Option B: Standalone On-Device Deployment
+1. Connect an HDMI monitor, USB keyboard, and mouse to the Orange Pi.
+2. Double-click the **UDS Terminal** desktop shortcut.
+3. Deploy bundles directly:
    ```bash
    uds deploy <bundle-name>.tar.zst
    ```
-4. **Open Web Browser**: Launch the **UDS Core Web Portal** shortcut to access Keycloak, NeuVector, Grafana, and Istio applications locally.
 
 ---
 
@@ -131,11 +140,12 @@ On the Orange Pi's desktop:
 | Command | Description |
 | :--- | :--- |
 | `make help` | Show all available make targets |
-| `make fetch-assets` | Download Armbian Desktop OS, K3s, and CLI binaries to `downloads/` |
+| `make fetch-assets` | **Step 1**: Download Armbian Desktop OS, K3s, and CLI binaries to `downloads/` |
 | `make select-sd` | Interactively detect, verify, and save target SD/NVMe device to `env` |
-| `make flash-sd` | Flash OS and pre-stage offline platform assets to SD/NVMe (uses saved default or `DISK=/dev/sdX`) |
+| `make flash-sd` | **Step 2**: Flash OS and pre-stage offline platform assets to SD/NVMe |
 | `make setup-net IFACE=eth0` | [Optional] Configure laptop interface for tethered direct Ethernet |
-| `make handoff` | [Optional] Configure `uds-platform-prep` for remote tethered deployment |
+| `make bootstrap` | **Step 3**: Commission Orange Pi from laptop (syncs clock, starts K3s, fetches kubeconfig) |
+| `make handoff` | **Step 4**: Configure `uds-platform-prep` directory for ARM64 deployment |
 | `make status` | Check cluster status via `kubectl` |
 | `make clean` | Remove temporary staging directories |
 
@@ -144,3 +154,4 @@ On the Orange Pi's desktop:
 ## Architecture Decision Records (ADRs)
 
 * [ADR 0001: Migrate Base OS from Talos Linux to Armbian Desktop](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0001-migrate-base-os-from-talos-to-armbian.md)
+* [ADR 0002: Deterministic Appliance Configuration, Pre-Seeded Zero-Touch Credentials, and Air-Gapped K3s Networking](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0002-deterministic-appliance-configuration-and-airgap-networking.md)
