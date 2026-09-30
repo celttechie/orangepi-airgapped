@@ -76,7 +76,7 @@ while [[ "${PASSWORD_MATCH}" == "false" ]]; do
     echo ""
     read -rsp "Enter administrator password (hidden): " PASS1
     echo ""
-    
+
     if [[ ${#PASS1} -lt 15 ]]; then
         echo -e "${YELLOW}Warning: Password length is ${#PASS1} characters (NIST recommends $\ge 15$).${NC}"
         read -rp "Do you want to proceed with this password length? [y/N]: " PROCEED_SHORT
@@ -84,10 +84,10 @@ while [[ "${PASSWORD_MATCH}" == "false" ]]; do
             continue
         fi
     fi
-    
+
     read -rsp "Confirm administrator password (hidden): " PASS2
     echo ""
-    
+
     if [[ "${PASS1}" != "${PASS2}" ]]; then
         echo -e "${RED}Error: Passwords do not match. Please try again.${NC}"
     else

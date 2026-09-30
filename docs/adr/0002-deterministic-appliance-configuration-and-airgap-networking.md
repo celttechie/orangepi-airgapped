@@ -38,7 +38,7 @@ When provisioning the standalone air-gapped Armbian Desktop image on the Orange 
    - *Cons*: Fails headless booting (hangs on Armbian first-run prompt); requires external DHCP router in air-gapped field environments; causes CNI failures when disconnected.
 
 2. **Option 2: Deterministic Pre-Seeding with Fixed Maintenance IP & Host-GW CNI (Chosen)**
-   - *Pros*: 
+   - *Pros*:
      - Pre-seeds deterministic user (`DEFAULT_USER="bjarrett"`), passwordless sudo, and workstation SSH public keys at flash time.
      - Utilizes `/boot/armbian_first_run.txt` to completely bypass the interactive console setup.
      - Configures a deterministic static maintenance IP (`192.168.42.100/24`) and maps `/etc/hosts` accordingly.
