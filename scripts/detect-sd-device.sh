@@ -60,7 +60,7 @@ for LINE in "${ALL_DISKS[@]}"; do
 
     printf "  [%d]  %-16s %-8s %-6s %-30s %s\n" "${INDEX}" "${DEV_NAME}" "${DEV_SIZE}" "${DEV_TRAN}" "${DEV_MODEL}" "${FLAGS}"
     CANDIDATES+=("${DEV_NAME}")
-    ((INDEX++))
+    INDEX=$((INDEX + 1))
 done
 
 echo ""
