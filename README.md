@@ -1,5 +1,9 @@
 # Orange Pi Air-Gapped Provisioner (`orangepi-airgapped`)
 
+> [!IMPORTANT]
+> **Project Status: Alpha**
+> This repository is currently in active **Alpha** development. Features, automation scripts, and workflows have been validated on the **Orange Pi 5 Pro** with **Armbian Noble Desktop** and **K3s v1.30.4+k3s1**. Contributions, issue reports, and feedback are welcome.
+
 Automated, reproducible bare-metal provisioning toolchain to prepare **Orange Pi (5 Pro, 5, 3 LTS)** single-board computers as standalone, air-gapped **Defense Unicorns UDS (Unified Delivery System)** appliances.
 
 This toolkit configures an **Armbian Desktop (Ubuntu / Debian ARM64)** base OS with native Rockchip GPU/HDMI drivers, a pre-staged **K3s Kubernetes** cluster, offline CLI tools (`uds`, `zarf`, `kubectl`, `helm`, `k9s`), and desktop shortcuts for immediate on-device interaction via an HDMI monitor, keyboard, and mouse.
