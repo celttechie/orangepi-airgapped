@@ -1,11 +1,11 @@
-I# Orange Pi Air-Gapped Provisioner (`orangepi-airgapped`)
+# Orange Pi Air-Gapped Provisioner (`orangepi-airgapped`)
 
 Automated, reproducible bare-metal provisioning toolchain to prepare **Orange Pi (5 Pro, 5, 3 LTS)** single-board computers as standalone, air-gapped **Defense Unicorns UDS (Unified Delivery System)** appliances.
 
 This toolkit configures an **Armbian Desktop (Ubuntu / Debian ARM64)** base OS with native Rockchip GPU/HDMI drivers, a pre-staged **K3s Kubernetes** cluster, offline CLI tools (`uds`, `zarf`, `kubectl`, `helm`, `k9s`), and desktop shortcuts for immediate on-device interaction via an HDMI monitor, keyboard, and mouse.
 
 > [!NOTE]
-> See [ADR 0001: Migrate Base OS from Talos Linux to Armbian Desktop](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0001-migrate-base-os-from-talos-to-armbian.md) for the architecture rationale and technical background.
+> See [ADR 0001: Migrate Base OS from Talos Linux to Armbian Desktop](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0001-migrate-base-os-from-talos-to-armbian.md) and [ADR 0002: Deterministic Appliance Configuration & Air-Gap Networking](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0002-deterministic-appliance-configuration-and-airgap-networking.md) for architecture rationale and security control traceability.
 
 ---
 
@@ -15,9 +15,10 @@ This toolkit configures an **Armbian Desktop (Ubuntu / Debian ARM64)** base OS w
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ WORKSTATION / LAPTOP (Provisioning Only)                                               │
 │                                                                                        │
-│ 1. Download Armbian Desktop OS + K3s Airgap Binaries + UDS/Zarf CLIs                   │
-│ 2. Flash Armbian image directly to MicroSD / NVMe storage                              │
-│ 3. Mount rootfs partition and pre-stage offline platform assets into storage           │
+│ 1. Interactively configure NIST credentials, SSH keys, & network (make config)        │
+│ 2. Download Armbian Desktop OS + K3s Airgap Binaries + UDS/Zarf CLIs (make fetch-assets)│
+│ 3. Flash Armbian image & pre-stage offline assets to SD / NVMe (make flash-sd)         │
+│ 4. Commission cluster via strict SSH, sync UTC clock, & fetch kubeconfig (make bootstrap)│
 └───────────────────────────────────────────────────┬────────────────────────────────────┘
                                                     │ Insert Flashed Storage Media
                                                     ▼
@@ -43,12 +44,18 @@ This toolkit configures an **Armbian Desktop (Ubuntu / Debian ARM64)** base OS w
 
 ## Step-by-Step Provisioning Workflow
 
-### 1. Configure Target Model (Optional)
-Edit `env` (or copy from `env.example`) to choose your Orange Pi model and tool versions:
+### 1. Interactively Configure Appliance & Credentials (NIST SP 800-53 / 800-63B)
+Run the automated configuration wizard to set up credentials, SSH keypairs, and network defaults:
 ```bash
-cp env.example env
+make config
 ```
-*Default model is `orangepi5-pro` with Armbian Noble Desktop.*
+This interactive utility:
+- Enforces NIST SP 800-63B password complexity ($\ge 15$ characters) and transforms passwords into salted **SHA-512 crypt hashes** (`$6$`). Plaintext passwords are never written to disk or storage.
+- Auto-detects or generates dedicated asymmetric **Ed25519 SSH keypairs** (`~/.ssh/id_ed25519_orangepi`).
+- Generates a deterministic appliance **Ed25519 host key** (`keys/ssh_host_ed25519_key`) and pins it to local `./known_hosts` to prevent Man-in-the-Middle (MITM) attacks.
+- Saves settings to `env` with strict `-rw-------` (`0600`) POSIX permissions.
+
+---
 
 ### 2. Fetch Offline Platform Assets
 Download the Armbian Desktop OS image, K3s ARM64 binaries and container image tarballs, and CLI toolchains (`uds`, `zarf`, `kubectl`, `helm`, `k9s`):
@@ -59,78 +66,69 @@ All assets are verified and cached in `downloads/`.
 
 ---
 
-### 3. Flash Storage & Pre-Stage Platform Binaries
+### 3. Flash Storage & Pre-Stage Platform Assets
 Insert your MicroSD card or NVMe USB enclosure into your workstation.
 
 #### Identify and Confirm the Storage Device
-Use the interactive selection tool to scan, confirm, and save your SD card's device path:
+Scan and confirm your SD card's device path:
 ```bash
 make select-sd
 ```
-This utility:
-1. Lists all physical disks, highlighting removable USB drives and SD card readers.
-2. Prompts you to pick the device number or specify a path.
-3. Shows the **explicit verification details** (device path, capacity, model, bus type, and current partition layout).
-4. Confirms the choice and saves `SD_DISK="/dev/..."` into `env` so future commands default to it automatically.
-
-> [!CAUTION]
-> Always target the **full disk device** (e.g. `/dev/sda` or `/dev/mmcblk0`), **never** an individual partition (e.g. `/dev/sda1`). Always verify capacity and model before confirming.
+*(Or simply run `make flash-sd`—it will automatically launch device selection if the configured drive is missing or not connected).*
 
 #### Flash and Stage in One Command
-Once selected, simply run:
 ```bash
 make flash-sd
 ```
 *(You can also override the target explicitly at any time with `make flash-sd DISK=/dev/sda`).*
 
 This automated process:
-1. Displays the confirmed target disk, capacity, and source OS image.
-2. Prompts for a final explicit `yes` confirmation before writing.
-3. Flashes the Armbian Desktop image directly to the storage media.
-4. Mounts the card's root partition on your workstation.
-5. Pre-stages `k3s`, `kubectl`, `helm`, `zarf`, `uds`, and `k9s` into `/usr/local/bin/`.
-6. Copies K3s air-gapped container images into `/var/lib/rancher/k3s/agent/images/`.
-7. Installs the auto-initialization service (`firstboot-k3s-init.service`).
-8. Installs Desktop shortcuts for the Web Browser, UDS Terminal, and K9s Cluster Manager.
-9. Unmounts and syncs cleanly.
+1. Prompts for an explicit `yes` confirmation before writing.
+2. Flashes the Armbian Desktop OS image directly to the storage media.
+3. Pre-creates the administrator user (`DEFAULT_USER`, UID 1000) directly in rootfs `/etc/passwd`, `/etc/shadow`, and `/etc/sudoers.d/`.
+4. Pre-configures the static maintenance network (`192.168.42.100/24`) across NetworkManager and systemd-networkd.
+5. Injects workstation SSH public keys into `/home/${DEFAULT_USER}/.ssh/authorized_keys` (`0600`).
+6. Pre-seeds deterministic Ed25519 host keys and disables Armbian's first-boot host key wipe (`OPENSSHD_REGENERATE_HOST_KEYS=false`).
+7. Disables unauthenticated root console autologin to enforce physical console access security.
+8. Pre-stages `k3s`, `kubectl`, `helm`, `zarf`, `uds`, `k9s`, and air-gapped container image archives into `/var/lib/rancher/k3s/agent/images/`.
+9. Installs Desktop shortcuts for the Web Browser, UDS Terminal, and K9s Cluster Manager.
+10. Unmounts and syncs cleanly.
 
 ---
 
 ### 4. Boot & Commission Cluster
-
 1. **Insert & Power On**: Insert the flashed MicroSD/NVMe into your Orange Pi. Connect an Ethernet cable between the Orange Pi and your laptop, then power on the board.
-2. **Commission & Bootstrap from Laptop**:
-   Run the automated commissioning command from your laptop:
+2. **Commission from Laptop**:
    ```bash
    make bootstrap
    ```
    This automated process:
-   - Waits for the Orange Pi to boot and become reachable over SSH at `192.168.42.100`.
-   - Synchronizes the board's system clock to the laptop's exact UTC timestamp (preventing air-gap TLS certificate errors).
-   - Starts and enables the `k3s` service.
+   - Connects over SSH using `StrictHostKeyChecking=yes` against pinned `./known_hosts`.
+   - Synchronizes the board's system clock to the laptop's UTC timestamp (preventing air-gap TLS certificate expiration errors).
+   - Starts and enables the `k3s.service`.
    - Fetches `/etc/rancher/k3s/k3s.yaml` to `./kubeconfig` and `~/.kube/config` on your laptop.
-   - Verifies the cluster reaches `Ready` state.
+   - Polls until the node reports `Ready` and CoreDNS reaches `1/1 Running`.
 
 ---
 
 ### 5. Deploy UDS Platform Workloads
+Deploy workloads either remotely from your laptop or standalone on the Orange Pi:
 
-You can deploy workloads either remotely from your laptop or standalone on the Orange Pi:
-
-#### Option A: Deploy from Laptop (Tethered)
+#### Option A: Remote / Tethered via Laptop (Recommended)
 ```bash
 make handoff
 # or deploy directly using the local kubeconfig:
 export KUBECONFIG=./kubeconfig
-uds deploy <bundle-name>.tar.zst
+uds deploy <bundle-name>-arm64.tar.zst --confirm
 ```
 
 #### Option B: Standalone On-Device Deployment
 1. Connect an HDMI monitor, USB keyboard, and mouse to the Orange Pi.
-2. Double-click the **UDS Terminal** desktop shortcut.
-3. Deploy bundles directly:
+2. Log in with your configured user credentials.
+3. Double-click the **UDS Terminal** desktop shortcut.
+4. Deploy bundles directly:
    ```bash
-   uds deploy <bundle-name>.tar.zst
+   uds deploy <bundle-name>-arm64.tar.zst --confirm
    ```
 
 ---
@@ -139,15 +137,16 @@ uds deploy <bundle-name>.tar.zst
 
 | Command | Description |
 | :--- | :--- |
-| `make help` | Show all available make targets |
-| `make fetch-assets` | **Step 1**: Download Armbian Desktop OS, K3s, and CLI binaries to `downloads/` |
-| `make select-sd` | Interactively detect, verify, and save target SD/NVMe device to `env` |
-| `make flash-sd` | **Step 2**: Flash OS and pre-stage offline platform assets to SD/NVMe |
-| `make setup-net IFACE=eth0` | [Optional] Configure laptop interface for tethered direct Ethernet |
-| `make bootstrap` | **Step 3**: Commission Orange Pi from laptop (syncs clock, starts K3s, fetches kubeconfig) |
-| `make handoff` | **Step 4**: Configure `uds-platform-prep` directory for ARM64 deployment |
+| `make help` | Show all available make targets and descriptions |
+| `make config` | **Step 1**: Interactively configure NIST-compliant credentials, SSH keys, and network |
+| `make fetch-assets` | **Step 2**: Download Armbian Desktop OS, K3s, and CLI binaries to `downloads/` |
+| `make select-sd` | Interactively scan, verify, and save target SD/NVMe device to `env` |
+| `make flash-sd` | **Step 3**: Flash OS and pre-stage offline platform assets to SD/NVMe |
+| `make setup-net IFACE=eth0` | [Optional] Configure laptop Ethernet interface for direct connection |
+| `make bootstrap` | **Step 4**: Commission Orange Pi from laptop (syncs clock, starts K3s, fetches kubeconfig) |
+| `make handoff` | **Step 5**: Configure `uds-platform-prep` directory for ARM64 deployment |
 | `make status` | Check cluster status via `kubectl` |
-| `make clean` | Remove temporary staging directories |
+| `make clean` | Remove temporary staging directories and build output |
 
 ---
 
