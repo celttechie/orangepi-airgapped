@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=K9s Cluster Manager
+Comment=Manage Kubernetes cluster workloads via terminal UI
+Exec=x-terminal-emulator -e "/usr/local/bin/k9s"
+Icon=utilities-terminal
+Terminal=false
+Categories=System;Monitor;Utility;

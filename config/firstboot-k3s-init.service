@@ -1,0 +1,15 @@
+[Unit]
+Description=First Boot K3s and UDS Platform Setup
+After=network.target network-online.target
+Wants=network-online.target
+ConditionPathExists=/usr/local/bin/firstboot-k3s-init.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/firstboot-k3s-init.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

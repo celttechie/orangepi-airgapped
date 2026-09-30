@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=UDS Terminal
+Comment=Interactive shell with UDS, Zarf, and Kubectl pre-configured
+Exec=x-terminal-emulator -e "bash -l"
+Icon=utilities-terminal
+Terminal=false
+Categories=System;Utility;

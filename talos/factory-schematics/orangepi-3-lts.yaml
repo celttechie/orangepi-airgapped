@@ -1,7 +1,0 @@
-# Talos Image Factory schematic for Orange Pi 3 LTS (Allwinner H6)
-# Used with https://factory.talos.dev
-customization:
-  systemExtensions:
-    officialExtensions:
-      - siderolabs/sbc-allwinner
-      - siderolabs/util-linux-tools

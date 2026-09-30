@@ -1,0 +1,22 @@
+# Environment overrides
+env
+
+# Downloaded ISOs, images, and binary caches
+downloads/
+http/
+tftp/
+_out/
+
+# Cluster secrets & kubeconfigs
+kubeconfig
+*.kubeconfig
+secrets.yaml
+keys/
+known_hosts
+
+# Temporary staging mount points
+_mnt*
+/tmp/orangepi_rootfs.*
+
+# Local AI agent workspaces and rules
+.agents/

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=UDS Core Web Portal
+Comment=Open UDS Core and Air-Gapped Cluster Services
+Exec=x-www-browser https://uds.local https://auth.uds.local https://neuvector.uds.local https://grafana.uds.local
+Icon=web-browser
+Terminal=false
+Categories=Network;WebBrowser;System;
