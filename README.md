@@ -1,15 +1,68 @@
 # Orange Pi Air-Gapped Provisioner (`orangepi-airgapped`)
 
+[![Status: Alpha](https://img.shields.io/badge/Status-Alpha-orange.svg)](#)
+[![Hardware: Orange Pi 5 Pro](https://img.shields.io/badge/Hardware-Orange%20Pi%205%20Pro%20(ARM64)-blue.svg)](#)
+[![Kubernetes: K3s](https://img.shields.io/badge/kubernetes-K3s%20v1.30+-326ce5.svg?logo=kubernetes&logoColor=white)](#)
+[![Defense Unicorns: UDS + Zarf](https://img.shields.io/badge/Defense%20Unicorns-UDS%20%2B%20Zarf-black.svg)](#)
+
 > [!IMPORTANT]
 > **Project Status: Alpha**
 > This repository is currently in active **Alpha** development. Features, automation scripts, and workflows have been validated on the **Orange Pi 5 Pro** with **Armbian Noble Desktop** and **K3s v1.30.4+k3s1**. Contributions, issue reports, and feedback are welcome.
 
-Automated, reproducible bare-metal provisioning toolchain to prepare **Orange Pi (5 Pro, 5, 3 LTS)** single-board computers as standalone, air-gapped **Defense Unicorns UDS (Unified Delivery System)** appliances.
+An automated bare-metal toolchain built to turn low-cost single-board computers (**Orange Pi 5 Pro, 5, 3 LTS**) into standalone, air-gapped **Defense Unicorns UDS** appliances.
 
-This toolkit configures an **Armbian Desktop (Ubuntu / Debian ARM64)** base OS with native Rockchip GPU/HDMI drivers, a pre-staged **K3s Kubernetes** cluster, offline CLI tools (`uds`, `zarf`, `kubectl`, `helm`, `k9s`), and desktop shortcuts for immediate on-device interaction via an HDMI monitor, keyboard, and mouse.
+It provisions an **Armbian Desktop (ARM64)** base image with native GPU/HDMI support, stages offline **K3s Kubernetes** binaries and container images, and bundles essential CLI tools (`uds`, `zarf`, `kubectl`, `helm`, `k9s`) so you can plug in a monitor, keyboard, and mouse and run UDS directly on the board with zero internet access.
 
 > [!NOTE]
 > See [ADR 0001: Migrate Base OS from Talos Linux to Armbian Desktop](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0001-migrate-base-os-from-talos-to-armbian.md) and [ADR 0002: Deterministic Appliance Configuration & Air-Gap Networking](file:///home/bjarrett/Projects/orangepi-airgapped/docs/adr/0002-deterministic-appliance-configuration-and-airgap-networking.md) for architecture rationale and security control traceability.
+
+---
+
+## Where this fits in the 3-Tier Architecture
+
+This project handles **Tier 1: Target Substrates** for physical tactical edge hardware. Its job is to give you a clean, hardened, and pre-staged ARM64 appliance that is ready for **Tier 2** platform setup ([`uds-platform-prep`](https://github.com/celttechie/uds-platform-prep)) and **Tier 3** bundle deployments ([`uds-bundle-dev-test`](https://github.com/celttechie/uds-bundle-dev-test) / [`zarf-uds-lula-datalakehouse`](https://github.com/celttechie/zarf-uds-lula-datalakehouse)).
+
+```mermaid
+flowchart TD
+    subgraph T1 ["Tier 1: Target Substrates (This Repo: orangepi-airgapped)"]
+        direction LR
+        OPI["orangepi-airgapped\n• Bare-Metal ARM64 SBC\n• Pre-staged K3s & Rootfs\n• Local HDMI Desktop UI"]
+        KVM["airgapped-sandbox-vm\n(Nested KVM Hypervisor Sandbox)"]
+        AWS["AWS Infrastructure\n(EC2 Spot K3s / Managed EKS)"]
+    end
+
+    subgraph T2 ["Tier 2: Platform Preparation (uds-platform-prep)"]
+        direction LR
+        PREP["uds-platform-prep\n(Toolchain Ingestion • K3s/RKE2/Talos • In-Cluster zarf init)"]
+    end
+
+    subgraph T3 ["Tier 3: Software & Bundle Engineering (Zarf & UDS)"]
+        direction LR
+        DEV["uds-bundle-dev-test\n(Modular Package & Bundle Authoring)"]
+        LAKE["zarf-uds-lula-datalakehouse\n(Mission Lakehouse • Istio mTLS • Lula OSCAL ATO)"]
+    end
+
+    T1 ==>|"Clean, Isolated Target Ready"| T2
+    T2 ==>|"UDS-Ready Cluster"| T3
+```
+
+---
+
+## 🛠️ Operational Workflow: How It Works
+
+Provisioning and deploying the Orange Pi follows a simple 3-phase workflow:
+
+1. **Flash Storage on Technician Laptop (Connected Phase):**
+   Using your technician laptop/workstation, you run the provisioning scripts to download the Armbian ARM64 image, offline K3s binaries, container archives, and UDS/Zarf toolchains. This gets flashed directly onto a MicroSD card (or NVMe drive) with pre-configured NIST-hardened credentials, static networking (`192.168.42.100`), and desktop shortcuts.
+
+2. **Boot & Tether to Technician Laptop (Platform Prep Phase):**
+   Insert the flashed SD card into the Orange Pi and connect an Ethernet cable directly between the board and your technician laptop. Running `make bootstrap` securely connects over SSH, syncs the system clock (preventing air-gap TLS cert issues), starts K3s from the offline tarballs, and pulls the `kubeconfig` back to your laptop. From here, you hand off to [`uds-platform-prep`](https://github.com/celttechie/uds-platform-prep) to initialize Zarf (`zarf init`).
+
+3. **Deploy UDS Workloads (Two Options):**
+   * **Option A: Tethered via Technician Laptop (Network Push):**
+     Keep the Ethernet cable attached and run `uds deploy <bundle>.tar.zst --confirm` directly from your laptop using the retrieved `kubeconfig`. The laptop pushes the bundle images and manifests over the local link to the Orange Pi's in-cluster Zarf registry.
+   * **Option B: Standalone On-Device via USB Media (Sneakernet / Field Appliance):**
+     Copy your `.tar.zst` UDS bundle onto a USB flash drive and plug it into the Orange Pi. Connect an HDMI monitor, keyboard, and mouse, log in to the desktop, open the **UDS Terminal**, and run `uds deploy /media/usb/<bundle>.tar.zst --confirm` directly on the device.
 
 ---
 
